@@ -122,6 +122,8 @@ def main() -> int:
               (rel, status,
                ",".join(sorted(expected_codes)) or "（无）",
                ",".join(sorted(got_codes)) or "（无）"))
+        # 打印该样例上 Verilator 实际报出的全部警告码（便于把期望值对准现实）
+        print("      codes: %s" % (",".join(sorted(hits)) or "(none)"))
         if missing:
             print("      !! Verilator 未佐证: %s" % ",".join(sorted(missing)))
         if extra:
