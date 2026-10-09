@@ -1,4 +1,8 @@
-# RTL-Sentinel 代码审查 —— CI 集成示例
+# RTL-Sentinel 代码审查 —— CI 集成示例（给“被审查的 RTL 项目”复制的模板）
+#
+# 注意：本文件位于 .github/ci-examples/，**不在** .github/workflows/ 下，所以
+#       不会在 RTL-Sentinel 自身仓库里自动运行 —— 它默认审查 rtl/ 目录，是给
+#       “被审查的 RTL 项目”复制的；复制到你的仓库后请按你的项目改路径。
 #
 # 用法：把本文件放到你仓库的 .github/workflows/ 目录下即可。
 # 审查结果会以 SARIF 形式上传到 GitHub Code Scanning，

@@ -379,7 +379,7 @@ RTL-Sentinel 提供集中式、**强制带理由、可审计**的豁免配置 `.
 **风险分按代码规模归一化**：绝对加权和对大工程不公平 —— 15000 行代码里的 8 个 error
 与 200 行里的 8 个 error 严重程度完全不同。基准为「每千行 40 个加权缺陷 = 满风险」。
 
-**CI 集成**：`.github/workflows/rtl-sentinel.yml` 提供 GitHub Actions 示例，
+**CI 集成**：`.github/ci-examples/rtl-sentinel.yml` 提供 GitHub Actions 示例，
 结果经 SARIF 上传到 Code Scanning，在 PR 中以行内批注展示：
 
 ```bash
@@ -404,7 +404,8 @@ rtl-sentinel/
 │   ├── llm.py                推理层（可插拔后端）
 │   ├── report.py             Text / MD / HTML / JSON / SARIF 报告
 │   └── cli.py                命令行入口
-├── .github/workflows/        CI 集成示例（SARIF + Code Scanning）
+├── .github/workflows/         本工具自身 CI（离线回归 + Verilator 交叉验证）
+├── .github/ci-examples/       给“被审查的 RTL 项目”复制的 CI 示例（SARIF）
 ├── samples/
 │   ├── bad/                  5 个含已知缺陷的设计（附 GROUND TRUTH 标注）
 │   └── good/                 4 个干净基线（度量误报率）
