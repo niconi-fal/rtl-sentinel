@@ -60,8 +60,7 @@ jobs:
         run: verilator --version
 
       - name: 用 Verilator 独立复核 R001 / R002 / R004
-        # 首版只报告、不阻断：Verilator 的警告集与本项目规则只是部分重叠，
-        # 首次运行很可能暴露口径差异。看过后把期望值调准，再删掉本行收紧门禁。
+        # 结果同时写入 job summary，并以 annotation 输出明细（公开可见、便于自查）。
         continue-on-error: true
         run: |
           set +e
@@ -73,9 +72,10 @@ jobs:
             cat verilator-cross-check.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$rc" -ne 0 ]; then
-            grep -E '\[FAIL\]|!!|codes:' verilator-cross-check.log | head -40 | while IFS= read -r l; do
-              echo "::error title=Verilator cross-check::$l"
+          lv=notice
+          if [ "$rc" -ne 0 ]; then lv=error; fi
+          grep -E '\[FAIL\]|\[SKIP\]|!!|codes:|结论:' verilator-cross-check.log \
+            | head -40 | while IFS= read -r l; do
+              echo "::${lv} title=Verilator cross-check::$l"
             done
-          fi
           exit $rc
