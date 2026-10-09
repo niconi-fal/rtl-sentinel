@@ -1,0 +1,181 @@
+{
+  "unit": {
+    "rule_level": "(file, rule_id)",
+    "location_level": "(file, rule_id, line)"
+  },
+  "samples": [
+    {
+      "sample": "bad/cdc_buggy.v",
+      "expect": [
+        "R004@30",
+        "R006@14",
+        "R008@17"
+      ],
+      "got_rules": [
+        "R004",
+        "R006",
+        "R008"
+      ],
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
+      "sample": "bad/fsm_buggy.v",
+      "expect": [
+        "R001@23",
+        "R003@38",
+        "R003@39",
+        "R005@45",
+        "R007@50",
+        "R008@20"
+      ],
+      "got_rules": [
+        "R001",
+        "R003",
+        "R005",
+        "R007",
+        "R008"
+      ],
+      "tp": 5,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
+      "sample": "bad/inst_buggy.v",
+      "expect": [
+        "R009@22",
+        "R009@22",
+        "R010@22",
+        "R004@40"
+      ],
+      "got_rules": [
+        "R004",
+        "R009",
+        "R010"
+      ],
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
+      "sample": "bad/uart_tx_buggy.v",
+      "expect": [
+        "R001@41",
+        "R002@60",
+        "R003@56",
+        "R004@50",
+        "R004@70",
+        "R005@65",
+        "R006@34",
+        "R007@83",
+        "R007@84",
+        "R007@85",
+        "R008@17",
+        "R008@33",
+        "R008@36"
+      ],
+      "got_rules": [
+        "R001",
+        "R002",
+        "R003",
+        "R004",
+        "R005",
+        "R006",
+        "R007",
+        "R008"
+      ],
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
+      "sample": "bad/width_buggy.v",
+      "expect": [
+        "R002@18",
+        "R002@19",
+        "R002@20",
+        "R002@21",
+        "R008@8",
+        "R008@15"
+      ],
+      "got_rules": [
+        "R002",
+        "R008"
+      ],
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
+      "sample": "good/for_loop_clean.v",
+      "expect": [],
+      "got_rules": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
+      "sample": "good/sub_mod.v",
+      "expect": [],
+      "got_rules": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
+      "sample": "good/sync_fifo.v",
+      "expect": [],
+      "got_rules": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
+      "sample": "good/uart_tx_clean.v",
+      "expect": [],
+      "got_rules": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    }
+  ],
+  "total": {
+    "tp": 21,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  },
+  "location": {
+    "tp": 32,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  "severity": {
+    "error": 11,
+    "warning": 13,
+    "info": 8
+  }
+}

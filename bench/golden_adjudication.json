@@ -1,0 +1,113 @@
+{
+  "note": "语义推理层的裁定金标准。用于评测 LLM 后端判定告警真伪的准确率。",
+  "criteria": "裁定标准 = 该告警是否指向一个『需要修改的真实问题』。对成熟开源项目，技术上正确但设计者有意为之的实现判定为 false_positive（需豁免而非修复）。",
+  "source": "基于源码人工复核，文件与规则粒度。详见 docs/项目说明.md 第 5.2 节。",
+  "labels": [
+    {"file": "picorv32.v", "rule_id": "R002", "verdict": "false_positive",
+     "reason": "alu_out = alu_out_0 是把 1 位零标志扩展为 0/1 结果；reg_sh <= cpuregs_rs2 取低 5 位作 RV32 移位量，均符合 ISA 语义，属有意截断。"},
+
+    {"file": "spimemio.v", "rule_id": "R002", "verdict": "uncertain",
+     "reason": "剩余告警为 din_data[8 位] <= config_dummy[4 位] 的零扩展，需确认是否为实现意图。（原 11 条 LHS 位选误报已随规则修复消失。）"},
+
+    {"file": "axis_ram_switch.v", "rule_id": "R002", "verdict": "uncertain",
+     "reason": "剩余告警为 1 位 wire（ram_wr_en / ram_rd_en）接收 4 位信号，需确认是否只取最低位。（原 +: 位选误报、数组下标误报均已随规则修复消失。）"},
+
+    {"file": "picosoc.v", "rule_id": "R002", "verdict": "false_positive",
+     "reason": "assign leds = gpio 有意只驱动 8 位 LED，高位丢弃是设计意图。"},
+
+    {"file": "hx8kdemo.v", "rule_id": "R002", "verdict": "false_positive",
+     "reason": "同 picosoc：gpio 32 位驱动 8 位 LED，有意截断。"},
+
+    {"file": "icebreaker.v", "rule_id": "R002", "verdict": "false_positive",
+     "reason": "同 picosoc：gpio 32 位驱动 8 位 LED，有意截断。"},
+
+    {"file": "axis_frame_join.v", "rule_id": "R002", "verdict": "uncertain",
+     "reason": "位宽适配逻辑，需结合 AXI-Stream 数据宽度参数确认是否为实现意图。"},
+
+    {"file": "picorv32.v", "rule_id": "R003", "verdict": "false_positive",
+     "reason": "set_mem_do_rinst 等为块内顺序计算变量，作者刻意使用阻塞赋值模拟顺序执行，仿真与综合行为一致，属编码风格而非缺陷。"},
+
+    {"file": "spiflash.v", "rule_id": "R003", "verdict": "false_positive",
+     "reason": "spiflash.v 是 SPI Flash 的行为仿真模型（含 task / #1 延时 / $display），并非综合目标，时序块中的阻塞赋值在行为模型中完全正常。"},
+
+    {"file": "axis_async_fifo.v", "rule_id": "R003", "verdict": "false_positive",
+     "reason": "wr_ptr_temp / rd_ptr_temp 为块内临时变量，用于格雷码指针的顺序计算，属该库一贯风格。"},
+
+    {"file": "axis_ll_bridge.v", "rule_id": "R003", "verdict": "false_positive",
+     "reason": "同 axis 库风格：块内临时变量使用阻塞赋值。"},
+
+    {"file": "picorv32.v", "rule_id": "R001", "verdict": "uncertain",
+     "reason": "L2118 处需确认块首是否已有默认赋值；picorv32 可正常综合，若真推断 latch 综合器会报错，疑为解析层对块首属性的处理盲区。"},
+
+    {"file": "spiflash.v", "rule_id": "R001", "verdict": "false_positive",
+     "reason": "行为仿真模型，无综合意义。"},
+
+    {"file": "spiflash.v", "rule_id": "R004", "verdict": "false_positive",
+     "reason": "仿真模型用多个 always 块驱动同一组变量模拟器件内部状态，属行为建模手法，非综合目标。"},
+
+    {"file": "spiflash.v", "rule_id": "R005", "verdict": "false_positive",
+     "reason": "always @(csb) 刻意只列 csb，模拟片选边沿触发行为，行为模型中有意为之。"},
+
+    {"file": "axis_async_fifo.v", "rule_id": "R006", "verdict": "false_positive",
+     "reason": "异步 FIFO 的跨时钟域处理经精心设计（格雷码指针 + 多级同步），该库为工业级实现。"},
+
+    {"file": "spiflash.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "assign #1 延时是 SPI Flash 行为建模的必需手段，仿真模型本就不综合。"},
+
+    {"file": "picorv32.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "$display 调试打印由 debug 宏包裹，综合时被剥离，非缺陷。"},
+
+    {"file": "axis_adapter.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "$error / $fatal 为仿真断言，综合工具直接忽略。"},
+    {"file": "axis_arb_mux.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+    {"file": "axis_async_fifo.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+    {"file": "axis_async_fifo_adapter.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+    {"file": "axis_demux.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+    {"file": "axis_fifo.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+    {"file": "axis_fifo_adapter.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+    {"file": "axis_frame_length_adjust.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+    {"file": "axis_ram_switch.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+    {"file": "axis_switch.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+    {"file": "axis_srl_fifo.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+    {"file": "axis_srl_register.v", "rule_id": "R007", "verdict": "false_positive",
+     "reason": "同 axis 库：仿真断言。"},
+
+    {"file": "axis_async_fifo.v", "rule_id": "R008", "verdict": "uncertain",
+     "reason": "mem_read_data_valid_reg / write / read / store_output 为块内局部变量或跨模块层次引用目标，需确认静态可见性。"},
+    {"file": "axis_fifo.v", "rule_id": "R008", "verdict": "uncertain",
+     "reason": "同 axis_async_fifo：块内局部变量。"},
+    {"file": "ll_axis_bridge.v", "rule_id": "R008", "verdict": "uncertain",
+     "reason": "clk / rst / ll_sof_in_n 端口被报未使用，与常理不符，疑为解析层对 SystemVerilog 风格声明的覆盖盲区。"},
+    {"file": "axis_ram_switch.v", "rule_id": "R008", "verdict": "uncertain",
+     "reason": "需结合参数化生成逻辑确认信号可见性。"},
+    {"file": "axis_arb_mux.v", "rule_id": "R008", "verdict": "uncertain",
+     "reason": "需结合参数化生成逻辑确认信号可见性。"},
+    {"file": "axis_frame_len.v", "rule_id": "R008", "verdict": "uncertain",
+     "reason": "需确认是否仅用于跨模块层次引用。"},
+    {"file": "axis_srl_fifo.v", "rule_id": "R008", "verdict": "uncertain",
+     "reason": "需确认是否仅用于跨模块层次引用。"},
+    {"file": "picorv32.v", "rule_id": "R008", "verdict": "uncertain",
+     "reason": "需确认是否仅用于 testbench 层次引用。"},
+    {"file": "spiflash.v", "rule_id": "R008", "verdict": "false_positive",
+     "reason": "行为仿真模型，无综合意义。"},
+    {"file": "spimemio.v", "rule_id": "R008", "verdict": "uncertain",
+     "reason": "需确认是否仅用于跨模块层次引用。"},
+
+    {"file": "axis_cobs_encode.v", "rule_id": "R010", "verdict": "uncertain",
+     "reason": "axis_fifo 的 pause_req 未连接即不会暂停，是否为设计意图需确认。现象客观成立。"},
+    {"file": "axis_frame_length_adjust_fifo.v", "rule_id": "R010", "verdict": "uncertain",
+     "reason": "同上：pause_req 未连接。"},
+    {"file": "picosoc.v", "rule_id": "R010", "verdict": "false_positive",
+     "reason": "picorv32 的 PCPI 协处理器接口（pcpi_rd/ready/wait/wr）在不使用协处理器时本就无需连接。"}
+  ]
+}

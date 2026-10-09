@@ -1,0 +1,59 @@
+# RTL-Sentinel 代码审查 —— CI 集成示例
+#
+# 用法：把本文件放到你仓库的 .github/workflows/ 目录下即可。
+# 审查结果会以 SARIF 形式上传到 GitHub Code Scanning，
+# 在 PR 的 "Files changed" 页面上直接以行内批注展示。
+#
+# 退出码约定：0 = 无错误级告警，1 = 存在错误级告警，2 = 输入异常。
+# 因此可以直接用它卡门禁 —— 把最后一步的 continue-on-error 去掉即可。
+
+name: RTL Sentinel
+
+on:
+  push:
+    paths:
+      - '**.v'
+      - '**.sv'
+      - '.rtlsentinel.json'
+  pull_request:
+    paths:
+      - '**.v'
+      - '**.sv'
+      - '.rtlsentinel.json'
+
+permissions:
+  contents: read
+  security-events: write   # 上传 SARIF 所需
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # RTL-Sentinel 零第三方依赖，无需 pip install
+
+      - name: 运行 RTL 审查（SARIF）
+        run: |
+          python -m rtl_sentinel.cli rtl/ \
+            -f sarif -o rtl-sentinel.sarif \
+            --no-llm --min-severity warning
+        # --no-llm: CI 中使用确定性的离线后端，保证结果可复现
+        # 若要在 CI 里调用大模型，去掉 --no-llm 并配置 RTL_SENTINEL_API_KEY
+
+      - name: 上传到 GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: rtl-sentinel.sarif
+          category: rtl-sentinel
+
+      - name: 门禁（存在 error 级告警则失败）
+        run: |
+          python -m rtl_sentinel.cli rtl/ \
+            --no-llm --min-severity error --quiet || {
+              echo "::error::RTL-Sentinel 检出 error 级问题，请查看 Code Scanning 结果";
+              exit 1;
+            }

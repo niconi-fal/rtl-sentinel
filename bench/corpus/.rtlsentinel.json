@@ -1,0 +1,22 @@
+{
+  "note": "针对 bench/corpus 真实开源语料的豁免配置。这些条目来自人工复核结论（见 bench/golden_adjudication.json），此处把它们固化为可审计、集中管理的豁免规则。",
+  "waivers": [
+    {"file": "spiflash.v", "rule": "R001", "reason": "SPI Flash 行为仿真模型，非综合目标，无综合意义"},
+    {"file": "spiflash.v", "rule": "R003", "reason": "行为仿真模型中的过程赋值，非时序逻辑建模"},
+    {"file": "spiflash.v", "rule": "R004", "reason": "行为模型用多个 always 块驱动同一组变量以模拟器件内部状态"},
+    {"file": "spiflash.v", "rule": "R005", "reason": "always @(csb) 刻意只列片选，模拟片选边沿触发行为"},
+    {"file": "spiflash.v", "rule": "R007", "reason": "assign #1 延时是 SPI Flash 行为建模的必需手段"},
+    {"file": "spiflash.v", "rule": "R008", "reason": "行为仿真模型，无综合意义"},
+
+    {"file": "picorv32.v", "rule": "R003", "reason": "set_mem_do_* / next_irq_pending 等为块内顺序计算变量，作者刻意使用阻塞赋值"},
+    {"file": "picorv32.v", "rule": "R007", "reason": "debug 宏包裹的调试打印，综合时被剥离"},
+
+    {"file": "axis_*.v", "rule": "R003", "reason": "axis 库一贯风格：块内临时变量（wr_ptr_temp / rd_ptr_temp）使用阻塞赋值做顺序计算"},
+    {"file": "axis_*.v", "rule": "R007", "reason": "AXI 库的仿真断言（$error / $fatal），综合工具直接忽略"},
+
+    {"file": "hx8kdemo.v", "rule": "R002", "reason": "32 位 gpio 有意只驱动 8 位 LED，高位丢弃是设计意图"},
+    {"file": "icebreaker.v", "rule": "R002", "reason": "同上：有意位宽截断"},
+    {"file": "picosoc.v", "rule": "R002", "reason": "同上：有意位宽截断"},
+    {"file": "picosoc.v", "rule": "R010", "reason": "picorv32 的 PCPI 协处理器接口在不使用协处理器时无需连接"}
+  ]
+}

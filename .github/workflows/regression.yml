@@ -1,0 +1,66 @@
+# RTL-Sentinel 回归 + 外部交叉验证
+#
+# 与 rtl-sentinel.yml 的分工:
+#   rtl-sentinel.yml  —— 对"被审查的 RTL 代码"做审查（CI 门禁 + SARIF）
+#   本文件             —— 对"审查工具自身"做回归验证（改规则后必须通过）
+#
+# 为什么要单独一个 job 跑 Verilator（关键）:
+#   "规则判断得对不对"此前只能自证。Verilator 是本项目唯一的外部权威 oracle。
+#   本地开发机往往装不了 verilator（Windows 无官方构建），但 GitHub 的
+#   ubuntu-latest 上 apt 一行即可安装 —— 于是把"外部背书"变成一次可公开
+#   复现的 CI 运行。首次运行若暴露口径差异，正是本 job 的价值所在。
+#
+# 退出码约定: bench/run_all.py 任一硬检查失败即非零退出。
+
+name: RTL Sentinel Regression
+
+on:
+  push:
+    paths:
+      - 'bench/**'
+      - 'samples/**'
+      - 'rtl_sentinel/**'
+      - '.github/workflows/regression.yml'
+  pull_request:
+    paths:
+      - 'bench/**'
+      - 'samples/**'
+      - 'rtl_sentinel/**'
+  workflow_dispatch:
+
+jobs:
+  offline-regression:
+    name: 离线回归（受控集 + 语料基线）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # 零第三方依赖，无需 pip install
+
+      - name: 一键离线回归
+        run: python bench/run_all.py
+
+  verilator-cross-check:
+    name: 外部交叉验证（Verilator）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装 Verilator
+        run: sudo apt-get update && sudo apt-get install -y verilator
+
+      - name: verilator 版本
+        run: verilator --version
+
+      - name: 用 Verilator 独立复核 R001 / R002 / R004
+        # 首版只报告、不阻断：Verilator 的警告集与本项目规则只是部分重叠，
+        # 首次运行很可能暴露口径差异。看过后把期望值调准，再删掉本行收紧门禁。
+        continue-on-error: true
+        run: python bench/check_verilator.py
