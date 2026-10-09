@@ -18,6 +18,8 @@ Verilator 的警告与本项目规则只是**部分重叠**，实测（Verilator
         WIDTHTRUNC 也可能是设计者有意为之。故本脚本只把它们作为"信息"打印，
         不参与判定。
 
+  · %Error-BLKANDNBLK <-> R003 阻塞/非阻塞混用 —— Verilator 直接判为 Error，
+        出现即视为 R003 的外部证据（此时该文件的 lint 会中止）。
 其余规则（CDC、敏感列表、不可综合结构、跨文件端口等）Verilator 不判。
 
 判定标准（版本无关，避免被 Verilator 升级搞挂）
@@ -52,12 +54,16 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # 真正指向缺陷、且本项目也覆盖的 Verilator 警告码（参与判定）
 DEFECT_CODES = {"LATCH", "MULTIDRIVEN"}
+# Verilator 会把"同一块内混用阻塞/非阻塞赋值"判为 Error（BLKANDNBLK），
+# 正好对应本项目 R003 —— 出现即视为 R003 的外部证据。
+ERROR_EVIDENCE = {"BLKANDNBLK": "R003"}
 # 位宽相关码：仅作信息打印，不参与判定（见文件头"实测口径"）
 WIDTH_CODES = {"WIDTHTRUNC", "WIDTHEXPAND"}
 
 # 匹配形如  %Warning-MULTIDRIVEN: samples/bad/cdc_buggy.v:30:14
 WARN_RE = re.compile(r"%Warning-(\w+):\s*([^\s:]+):(\d+)")
 ERR_RE = re.compile(r"%Error[^\n]*")
+ERRCODE_RE = re.compile(r"%Error-(\w+)")
 
 
 def find_verilator() -> str:
@@ -106,9 +112,14 @@ def main() -> int:
         out = lint([path] + [s for s in support if s != path])
 
         if "%Error" in out:
+            err_codes = set(ERRCODE_RE.findall(out))
+            ev = err_codes & set(ERROR_EVIDENCE)
+            if ev and not is_good:
+                confirmed |= ev
             m = ERR_RE.search(out)
-            print("%-30s [SKIP] Verilator 未能完成 lint: %s"
-                  % (rel, (m.group(0)[:110] if m else "")))
+            print("%-30s [SKIP] Verilator 未能完成 lint（错误码: %s）%s"
+                  % (rel, ",".join(sorted(err_codes)) or "-",
+                     (m.group(0)[:90] if m else "")))
             continue
 
         hits = {code for code, wfile, _line in WARN_RE.findall(out)

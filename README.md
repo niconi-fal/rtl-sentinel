@@ -315,6 +315,28 @@ python -m rtl_sentinel.cli rtl/ --llm-detect -f html -o report.html
 补充的线索质量可用 —— 例如它准确指出 `fsm_buggy.v L23`"else-if 链无终结 else，
 S_DONE 时 nstate 无赋值，推断 latch"，与规则 R001 结论一致。
 
+## 4.6 外部交叉验证：用 Verilator 独立复核
+
+前面几节的评测都是“自证”。为引入**外部权威工具**的独立证据，新增
+`bench/check_verilator.py`：对同一批样例跑 Verilator `--lint-only`，与本工具交叉
+核对；该脚本同时接入了 CI（`.github/workflows/regression.yml`）。
+
+**实测口径（重要：两者的重叠是部分重叠）**
+
+| Verilator 警告 | 对应本工具 | 能否作缺陷信号 |
+| --- | --- | --- |
+| `LATCH` | R001 推断锁存器 | 是 |
+| `MULTIDRIVEN` | R004 多驱动 | 是；但连续 `assign` 重复驱动 Verilator 不报，此时本工具覆盖更广 |
+| `WIDTHTRUNC` / `WIDTHEXPAND` | R002 位宽 | **否** —— Verilator 5 无笼统 `WIDTH`；`WIDTHEXPAND` 是正常零扩展，干净基线也会触发 |
+| `%Error-BLKANDNBLK` | R003 阻塞/非阻塞混用 | 是（Verilator 直接判为 Error） |
+
+**验收标准（版本无关）**：① 干净基线不得出现 `LATCH`/`MULTIDRIVEN`；
+② 缺陷样例中这些码至少被佐证一次。
+
+**实测结果**：4 个干净基线全部零缺陷码；`inst_buggy` 被独立佐证 `MULTIDRIVEN`，
+`fsm_buggy` 被佐证 `BLKANDNBLK`。个别样例 Verilator 无法完成 lint（含其不支持的
+语法），脚本会打印 `[SKIP]` 及原因，不计入判定。
+
 ## 5. 架构
 
 ```

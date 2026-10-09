@@ -60,8 +60,8 @@ jobs:
         run: verilator --version
 
       - name: 用 Verilator 独立复核 R001 / R002 / R004
-        # 结果同时写入 job summary，并以 annotation 输出明细（公开可见、便于自查）。
-        continue-on-error: true
+        # 判定标准见 bench/check_verilator.py 文件头；结果同时写入 job summary，
+        # 并以 annotation 输出明细（公开可见）。
         run: |
           set +e
           python bench/check_verilator.py 2>&1 | tee verilator-cross-check.log
