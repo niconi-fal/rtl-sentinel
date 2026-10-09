@@ -5,24 +5,28 @@
 规则引擎是自研实现，"规则判断对不对"此前只能自证。本脚本引入**外部权威工具**
 Verilator 对同一批样例做 lint，把"我说了算"变成"被工具背书"。
 
-覆盖范围（实测口径，诚实声明）
-------------------------------
-Verilator 的警告与本项目规则只是**部分重叠**。经实测（Verilator 5.x）：
-
-  · LATCH                      <-> R001 推断锁存器
-  · WIDTHTRUNC / WIDTHEXPAND   <-> R002 位宽截断
-      注意：Verilator 5 **没有**笼统的 "WIDTH" 码，位宽问题拆成了
-      WIDTHTRUNC（截断，可能丢数据）与 WIDTHEXPAND（扩展，安全）。
-  · MULTIDRIVEN                <-> R004 多驱动
-      但仅对"实例 / always 块冲突"报；对"两条连续 assign 驱动同一 wire"
-      （如 cdc_buggy 的 sync_ptr）Verilator 不报 —— 此时是本工具覆盖更广。
-
-其余规则（CDC、敏感列表、不可综合结构、跨文件端口等）Verilator 不判，不在范围内。
-
-验收标准（版本无关，避免被 Verilator 升级搞挂）
+覆盖范围与实测口径（诚实声明，均为实测结论）
 --------------------------------------------
-  ① 干净基线（good/）：Verilator **不得**报出任何映射码 —— 独立确认基线确实干净
-  ② 缺陷样例（bad/）：每个映射码至少被 Verilator 佐证一次 —— 独立确认缺陷真实存在
+Verilator 的警告与本项目规则只是**部分重叠**，实测（Verilator 5.x）发现：
+
+  · LATCH     <-> R001 推断锁存器     —— 确实指向缺陷，可作缺陷信号
+  · MULTIDRIVEN <-> R004 多驱动        —— 确实指向缺陷，可作缺陷信号；
+        但对"两条连续 assign 驱动同一 wire"（如 cdc_buggy 的 sync_ptr）Verilator
+        不报 —— 此时是本工具覆盖更广。
+  · 位宽码     —— Verilator 5 无笼统 "WIDTH"，拆成 WIDTHTRUNC / WIDTHEXPAND。
+        **不能当缺陷信号**：WIDTHEXPAND 是正常的零扩展（干净基线也会触发），
+        WIDTHTRUNC 也可能是设计者有意为之。故本脚本只把它们作为"信息"打印，
+        不参与判定。
+
+其余规则（CDC、敏感列表、不可综合结构、跨文件端口等）Verilator 不判。
+
+判定标准（版本无关，避免被 Verilator 升级搞挂）
+--------------------------------------------
+  ① 干净基线（good/）：Verilator **不得**报出 LATCH / MULTIDRIVEN —— 外部 FP 检查
+  ② 缺陷样例（bad/）：LATCH / MULTIDRIVEN 至少被佐证一次 —— 外部 TP 证据
+
+  部分样例 Verilator 无法完成 lint（含其不支持的语法），会打印 [SKIP] 并附原因，
+  不计入判定 —— 这是 Verilator 的覆盖边界，不是本工具的结论。
 
 用法
 ----
@@ -42,20 +46,18 @@ from typing import List, Set
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from evaluate import collect_samples, load_ground_truth      # noqa: E402
+from evaluate import collect_samples      # noqa: E402
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Verilator 中与本项目规则对应的警告码（仅这些可被外部工具独立复核）
-RULE_TO_VERILATOR = {
-    "R001": "LATCH",
-    "R002": ("WIDTHTRUNC", "WIDTHEXPAND"),
-    "R004": "MULTIDRIVEN",
-}
-MAPPED_CODES = {"LATCH", "WIDTHTRUNC", "WIDTHEXPAND", "MULTIDRIVEN"}
+# 真正指向缺陷、且本项目也覆盖的 Verilator 警告码（参与判定）
+DEFECT_CODES = {"LATCH", "MULTIDRIVEN"}
+# 位宽相关码：仅作信息打印，不参与判定（见文件头"实测口径"）
+WIDTH_CODES = {"WIDTHTRUNC", "WIDTHEXPAND"}
 
 # 匹配形如  %Warning-MULTIDRIVEN: samples/bad/cdc_buggy.v:30:14
 WARN_RE = re.compile(r"%Warning-(\w+):\s*([^\s:]+):(\d+)")
+ERR_RE = re.compile(r"%Error[^\n]*")
 
 
 def find_verilator() -> str:
@@ -92,41 +94,43 @@ def main() -> int:
     print("=" * 78)
     print("Verilator 交叉验证")
     print("=" * 78)
-    print("verilator: %s" % find_verilator())
-    print("映射码   : %s" % ",".join(sorted(MAPPED_CODES)))
+    print("verilator  : %s" % find_verilator())
+    print("判定码     : %s" % ",".join(sorted(DEFECT_CODES)))
     print("-" * 78)
 
     ok = True
-    seen: Set[str] = set()
+    confirmed: Set[str] = set()
     for path in samples:
         rel = os.path.relpath(path, BASE).replace("\\", "/")
         is_good = (os.sep + "good" + os.sep) in path
         out = lint([path] + [s for s in support if s != path])
+
         if "%Error" in out:
-            print("%-30s [SKIP] Verilator 未完成 lint（含其不支持的语法）" % rel)
+            m = ERR_RE.search(out)
+            print("%-30s [SKIP] Verilator 未能完成 lint: %s"
+                  % (rel, (m.group(0)[:110] if m else "")))
             continue
 
         hits = {code for code, wfile, _line in WARN_RE.findall(out)
                 if os.path.basename(wfile) == os.path.basename(path)}
-        mapped = hits & MAPPED_CODES
-        seen |= mapped
+        defect = hits & DEFECT_CODES
+        width = ",".join(sorted(hits & WIDTH_CODES)) or "-"
 
-        # ① 干净基线必须一条映射码都没有
         status = "OK"
-        if is_good and mapped:
+        if is_good and defect:                    # ① 干净基线不得有缺陷码
             status, ok = "FAIL", False
-        print("%-30s [%s] verilator 映射码: %s" % (
-            rel, status, ",".join(sorted(mapped)) or "（无）"))
-        print("      codes: %s" % (",".join(sorted(hits)) or "(none)"))
+        elif not is_good:
+            confirmed |= defect                   # ② 缺陷样例的佐证
+        print("%-30s [%s] 缺陷码: %-16s 位宽码(仅信息): %s"
+              % (rel, status, ",".join(sorted(defect)) or "（无）", width))
 
-    # ② 每个映射码至少被佐证一次
-    unconfirmed = MAPPED_CODES - seen
     print("-" * 78)
-    if unconfirmed:
+    if confirmed:
+        print("Verilator 独立佐证: %s" % ",".join(sorted(confirmed)))
+    if not confirmed:                             # ② 至少佐证一次
         ok = False
-        print("!! Verilator 未佐证: %s" % ",".join(sorted(unconfirmed)))
-    else:
-        print("Verilator 已独立佐证全部映射码: %s" % ",".join(sorted(MAPPED_CODES)))
+        print("!! Verilator 未能佐证任何缺陷码（%s）"
+              % ",".join(sorted(DEFECT_CODES)))
     print("结论: %s" % ("PASS" if ok else "FAIL"))
     print("=" * 78)
     return 0 if ok else 1

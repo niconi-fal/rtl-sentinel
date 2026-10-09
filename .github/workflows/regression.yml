@@ -74,7 +74,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           lv=notice
           if [ "$rc" -ne 0 ]; then lv=error; fi
-          grep -E '\[FAIL\]|\[SKIP\]|!!|codes:|结论:' verilator-cross-check.log \
+          grep -E '\[FAIL\]|\[SKIP\]|!!|缺陷码:|佐证|结论:' verilator-cross-check.log \
             | head -40 | while IFS= read -r l; do
               echo "::${lv} title=Verilator cross-check::$l"
             done
