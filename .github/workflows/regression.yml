@@ -63,4 +63,14 @@ jobs:
         # 首版只报告、不阻断：Verilator 的警告集与本项目规则只是部分重叠，
         # 首次运行很可能暴露口径差异。看过后把期望值调准，再删掉本行收紧门禁。
         continue-on-error: true
-        run: python bench/check_verilator.py
+        run: |
+          set +e
+          python bench/check_verilator.py 2>&1 | tee verilator-cross-check.log
+          rc=${PIPESTATUS[0]}
+          {
+            echo "## Verilator 交叉验证 (exit=$rc)"
+            echo '```'
+            cat verilator-cross-check.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
