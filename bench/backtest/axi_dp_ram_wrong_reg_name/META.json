@@ -1,0 +1,15 @@
+{
+  "name": "axi_dp_ram_wrong_reg_name",
+  "project": "alexforencich/verilog-axi",
+  "repo": "https://github.com/alexforencich/verilog-axi",
+  "license": "MIT",
+  "commit": "8ff77c8ae7e9d72b27879e4fae2ff370a153d5ca",
+  "commit_subject": "Fix reg name",
+  "commit_date": "2020-04-12",
+  "file": "rtl/axi_dp_ram.v",
+  "defect": "双时钟 RAM 的复位分支里把 ram_b_cmd_ready_reg 误写成 ram_a_cmd_ready_reg —— B 时钟域的过程块因此在驱动 A 时钟域的寄存器，与 A 域的过程块构成多驱动。作者随后把寄存器名改回 ram_b_cmd_ready_reg。",
+  "expected_rule": "R004",
+  "expected_lines": [376],
+  "status": "hit",
+  "verified_on": "2026-10-10"
+}
