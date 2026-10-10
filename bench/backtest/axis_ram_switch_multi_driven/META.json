@@ -1,0 +1,15 @@
+{
+  "name": "axis_ram_switch_multi_driven",
+  "project": "alexforencich/verilog-axis",
+  "repo": "https://github.com/alexforencich/verilog-axis",
+  "license": "MIT",
+  "commit": "c6ecd770e731f8d6c02a4501b776d4a8e3baea9b",
+  "commit_subject": "Fix spurious multi-driven net issue in axis_ram_switch when S_ID_WIDTH = 0",
+  "commit_date": "2024-01-26",
+  "file": "rtl/axis_ram_switch.v",
+  "defect": "generate 分支里 int_cmd_tid 的 +: 位选拼接在参数 S_ID_WIDTH = 0 时退化为重叠区间，构成多驱动；作者加上 if (ID_ENABLE && S_ID_WIDTH > 0) 守卫。",
+  "expected_rule": "R004",
+  "expected_lines": [614],
+  "status": "known_miss",
+  "note": "该缺陷只在参数 S_ID_WIDTH = 0 时成立。本工具不做参数化展开（generate 分支与参数覆写不展开），因此在源码默认参数下不报 —— 属已披露的能力边界，而非解析错误。"
+}

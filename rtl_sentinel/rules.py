@@ -77,7 +77,12 @@ def _is_block_local(mod: Module, blk, sig: str) -> bool:
     属可接受的编码风格，不构成仿真/综合失配风险。
     """
     s = mod.signal(sig)
-    if s is not None and s.direction in ("output", "inout"):
+    if s is None:
+        # 符号表里查不到该信号（例如声明落在 generate / `ifdef 区间内、
+        # 被解析器的区间屏蔽掉了）——此时**无法证明**它只是块内临时量，
+        # 因此不发放豁免标记（宁可不豁免，也不能误豁免一个真缺陷）。
+        return False
+    if s.direction in ("output", "inout"):
         return False
     for other in mod.always_blocks:
         if other is blk or sig in other.assigned_signals:
@@ -268,7 +273,8 @@ def r003_blocking_in_seq(mod: Module, ctx: Dict) -> List[Finding]:
         for a in blk.assigns:
             if a.op != "=":
                 continue
-            if not mod.signal(a.lhs):
+            sig = mod.signal(a.lhs)
+            if sig is not None and sig.storage in ("parameter", "localparam"):
                 continue
             out.append(_mk(
                 "R003", "阻塞赋值误用", "warning", a.line,

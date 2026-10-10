@@ -1,0 +1,15 @@
+{
+  "name": "axis_pipeline_fifo_assignment_type",
+  "project": "alexforencich/verilog-axis",
+  "repo": "https://github.com/alexforencich/verilog-axis",
+  "license": "MIT",
+  "commit": "6c234260b2484d7c8a64a0608f3a457ffefdb4fc",
+  "commit_subject": "Fix assignment type",
+  "commit_date": "2021-09-01",
+  "file": "rtl/axis_pipeline_fifo.v",
+  "defect": "always @(posedge clk) 的 if(rst) 分支内，用阻塞赋值 = 给寄存器数组 axis_tvalid_reg / axis_tready_reg 清零（本应使用 <=）。作者随后把这两行改为非阻塞赋值。",
+  "expected_rule": "R003",
+  "expected_lines": [161, 162],
+  "status": "hit",
+  "verified_on": "2026-10-10"
+}

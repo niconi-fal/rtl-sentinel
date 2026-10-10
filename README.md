@@ -456,6 +456,7 @@ rtl-sentinel/
 │   ├── evaluate.py           评测：规则级 P/R/F1 + 定位级(行号)校验
 │   ├── check_verilator.py    交叉验证：Verilator 独立复核 R003/R004
 │   ├── run_all.py            一键离线回归入口
+│   ├── evaluate_backtest.py   真实 bug 回溯验证（修复前/后对照）
 │   ├── evaluate_adjudication.py  语义推理层裁定准确率评测
 │   ├── evaluate_lintllm.py   第三方学术 benchmark 评估
 │   ├── golden_adjudication.json  裁定金标准（人工复核）
@@ -487,6 +488,8 @@ rtl-sentinel/
 
 - [x] 在开源 RTL 仓库上做增量验证，度量真实误报率（error 397 → 27，见第 4.2 节）
 - [x] 引入外部权威工具交叉验证：Verilator 独立佐证 R003（BLKANDNBLK）/ R004（MULTIDRIVEN），见第 4.6 节
+- [x] 真实 bug 回溯验证：`axis_pipeline_fifo` 的阻塞赋值缺陷，修复前命中 R003、修复后消失
+      （并因此查出并修复了 R003 的一处静默漏报；见 `docs/项目说明.md` 第十二节）
 - [ ] 建立 LLM 裁定 vs 人工标注的一致性评测，量化语义推理层带来的准确率增益
 - [ ] `generate` 分支语义展开，支持参数化设计的完整跨模块检查
 - [ ] 跨模块 CDC 检测（需建立时钟树与模块层级视图）
