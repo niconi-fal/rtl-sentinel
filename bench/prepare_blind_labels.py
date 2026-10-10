@@ -38,6 +38,7 @@ import argparse
 import csv
 import os
 import random
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -184,14 +185,21 @@ always @(posedge clk) busy <= start;
 """
 
 
-def render_items(res, groups, keys):
-    """把待判定条目渲染成文本（人读的 MD 与 AI 的提示词共用）。"""
+def render_items(res, groups, keys, facts=None):
+    """把待判定条目渲染成文本（人读的 MD 与 AI 的提示词共用）。
+
+    facts: {文件名: 事实字符串}。给出后每条附一行**文件级事实**，用于消除
+    \u201c标注方看不到整份文件、只能看告警附近几行\u201d这一信息不对称 ——
+    实测中它造成了约一半的标注分歧（如把行为级仿真模型误判为需修改的缺陷）。
+    """
     out = []
     for i, key in enumerate(keys, 1):
         fs = groups[key]
         f0 = fs[0]
         out.append("### %d. `%s` L%d —— %s（%s）\n" % (i, key[0], f0.line, key[1], f0.rule_name))
         out.append("- 工具告警：%s\n" % f0.message)
+        if facts and key[0] in facts:
+            out.append("- 文件事实：%s\n" % facts[key[0]])
         if len(fs) > 1:
             out.append("- 该文件另有 %d 条同类告警（属同一判定单元，一并判定）\n" % (len(fs) - 1))
         out.append("\n```verilog\n%s\n```\n\n"
@@ -209,11 +217,16 @@ def main() -> int:
                     help="three=三态量表（旧） / binary=可操作二元+校准样例（推荐）")
     ap.add_argument("--neutral", action="store_true",
                     help="三态协议下生成中性版提示词（不暗示\u201c大部分告警不是问题\u201d）")
+    ap.add_argument("--file-facts", action="store_true",
+                    help="每条附一行文件级事实（行数 / 是否含 #N 延时 / 是否含 task 定义），"
+                         "消除\u201c只能看告警附近几行\u201d的信息不对称")
     args = ap.parse_args()
 
     binary = (args.protocol == "binary")
     col = "decision" if binary else "verdict"
     suffix = "_binary" if binary else ("_neutral" if args.neutral else "")
+    if args.file_facts:
+        suffix += "_facts"
 
     eng = ReviewEngine()
     res = eng.review_path(args.corpus)
@@ -230,7 +243,16 @@ def main() -> int:
     csv_path = os.path.join(args.outdir, "blind_labels%s.csv" % suffix)
     md_path = os.path.join(args.outdir, "blind_labels%s.md" % suffix)
     prompt_path = os.path.join(args.outdir, "label_prompt%s.md" % suffix)
-    items = render_items(res, groups, keys)
+    facts = None
+    if args.file_facts:
+        facts = {}
+        for path, src in res.sources.items():
+            name = os.path.basename(path)
+            facts[name] = "%s，共 %d 行；含延时 `#N`：%s；含 task 定义：%s" % (
+                name, len(src.split("\n")),
+                "是" if re.search(r"#\s*\d+", src) else "否",
+                "是" if re.search(r"(?<![\w$])task(?![\w$])", src) else "否")
+    items = render_items(res, groups, keys, facts)
 
     with open(csv_path, "w", encoding="utf-8-sig", newline="") as fh:
         w = csv.writer(fh)
