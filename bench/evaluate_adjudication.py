@@ -84,15 +84,17 @@ def main() -> int:
     confused: collections.Counter = collections.Counter()
     mismatches = []
     key_ok = n_find = hit_find = 0
-    human_keys = human_ok = 0
+    ext_keys = ext_ok = 0
+    ext_sources = set()
     for key in sorted(by_key):
         g = golden[key]
         fs = by_key[key]
         all_ok = all(f.llm_verdict == g["verdict"] for f in fs)
         key_ok += all_ok
-        if g.get("source") == "human":
-            human_keys += 1
-            human_ok += all_ok
+        if g.get("source") not in (None, "self"):
+            ext_keys += 1
+            ext_ok += all_ok
+            ext_sources.add(str(g.get("source")))
         for f in fs:
             n_find += 1
             ok = (f.llm_verdict == g["verdict"])
@@ -121,11 +123,12 @@ def main() -> int:
     print()
     print("一致率（以判定单元为准）: %.1f%%  (%d/%d)" % (k_acc, key_ok, len(by_key)))
     print("一致率（按告警条数，旧口径，仅对照）: %.1f%%  (%d/%d)" % (f_acc, hit_find, n_find))
-    if human_keys:
-        print("独立人工标注子集: %d 个单元，一致率 %.1f%%  (%d/%d)"
-              % (human_keys, human_ok / human_keys * 100.0, human_ok, human_keys))
+    if ext_keys:
+        print("独立标注子集: %d 个单元，一致率 %.1f%%  (%d/%d)   来源: %s"
+              % (ext_keys, ext_ok / ext_keys * 100.0, ext_ok, ext_keys,
+                 ",".join(sorted(ext_sources))))
     else:
-        print("独立人工标注子集: 尚无（金标准仍为自产自评；见 bench/prepare_blind_labels.py）")
+        print("独立标注子集: 尚无（金标准仍为自产自评；见 bench/prepare_blind_labels.py）")
     print()
     print("混淆矩阵（人工 ↓ / 模型 →，按告警条数）")
     print("  %-16s %10s %14s %11s" % ("", *VERDICTS))

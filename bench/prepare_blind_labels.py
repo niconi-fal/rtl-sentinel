@@ -89,6 +89,33 @@ Verilog 工程**（RISC-V 软核 picoRV32、UART 收发器、AXI-Stream 基础�
 
 """
 
+# 中性版提示词：不暗示"大部分告警不是问题"，用于检验标注者是否受提示词先验影响。
+# 对照组：同一模型分别用 PROMPT（有先验）与 PROMPT_NEUTRAL（无先验）标注，
+# 两者差异即"提示词偏置"的量化。写论文/材料时这是很好的控制实验。
+PROMPT_NEUTRAL = """\
+你是一名资深数字 IC 设计 / 验证工程师。下面给你一批由静态检查工具从开源 Verilog
+工程中报出的告警，请你独立判断每条告警**是否指向一个需要修改的真实问题**。
+
+判断原则：
+- 只依据给出的源码上下文与告警描述判断，不要臆测没有提供的信息。
+- 若证据不足以判断设计意图，输出 uncertain，不要臆测。
+
+判定取值（三选一，必须严格使用这三个英文词）：
+  confirmed      —— 是真实缺陷，应当修复
+  false_positive —— 否，这是设计者有意为之的合法写法，应豁免而非修复
+  uncertain      —— 证据不足以判断
+
+输出要求（严格遵守，否则无法自动汇总）：
+- **只输出 CSV**，不要任何解释、标题、前后缀或 Markdown 代码围栏
+- 表头固定为： id,verdict,reason
+- 每个 id 恰好一行；verdict 用上面三个词之一；reason 用一句话说明理由
+  （能引用具体信号名或行号最好）
+- 不要遗漏任何 id，也不要新增 id
+
+待判定的告警如下：
+
+"""
+
 
 def render_items(res, groups, keys):
     """把待判定条目渲染成文本（人读的 MD 与 AI 的提示词共用）。"""
@@ -111,6 +138,8 @@ def main() -> int:
     ap.add_argument("--outdir", default=OUT, help="输出目录")
     ap.add_argument("--limit", type=int, default=0, help="抽样个数；0 = 全部")
     ap.add_argument("--seed", type=int, default=0, help="抽样随机种子（保证可复现）")
+    ap.add_argument("--neutral", action="store_true",
+                    help="生成中性版提示词（不暗示\u201c大部分告警不是问题\u201d），用于对照")
     args = ap.parse_args()
 
     eng = ReviewEngine()
@@ -128,7 +157,8 @@ def main() -> int:
     os.makedirs(args.outdir, exist_ok=True)
     csv_path = os.path.join(args.outdir, "blind_labels.csv")
     md_path = os.path.join(args.outdir, "blind_labels.md")
-    prompt_path = os.path.join(args.outdir, "label_prompt.md")
+    prompt_name = "label_prompt_neutral.md" if args.neutral else "label_prompt.md"
+    prompt_path = os.path.join(args.outdir, prompt_name)
     items = render_items(res, groups, keys)
 
     with open(csv_path, "w", encoding="utf-8-sig", newline="") as fh:
@@ -148,7 +178,7 @@ def main() -> int:
         fh.write(items)
 
     with open(prompt_path, "w", encoding="utf-8") as fh:
-        fh.write(PROMPT)
+        fh.write(PROMPT_NEUTRAL if args.neutral else PROMPT)
         fh.write(items)
 
     print("=" * 74)
@@ -156,7 +186,9 @@ def main() -> int:
     print("=" * 74)
     print("给人阅读 : %s" % os.path.relpath(md_path, BASE).replace("\\", "/"))
     print("给人填写 : %s" % os.path.relpath(csv_path, BASE).replace("\\", "/"))
-    print("给 AI 粘贴: %s   ← 整段复制到另一个模型即可" % os.path.relpath(prompt_path, BASE).replace("\\", "/"))
+    print("给 AI 粘贴: %s   ← 整段复制到另一个模型即可%s"
+          % (os.path.relpath(prompt_path, BASE).replace("\\", "/"),
+             "（中性版）" if args.neutral else ""))
     print()
     print("回填后合并：")
     print("  python bench/merge_blind_labels.py out/blind_labels.csv --rater \"同学A\"")

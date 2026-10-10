@@ -31,6 +31,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="合并盲标结果到金标准")
     ap.add_argument("csv_path", help="回填后的 blind_labels.csv")
     ap.add_argument("--rater", default="", help="标注者标识（写入金标准，便于审计）")
+    ap.add_argument("--kind", choices=["human", "model"], default="human",
+                    help="标注者类型：human=人工 / model=另一个 AI 模型（写入 source，供评测区分）")
     ap.add_argument("--out", default=GOLDEN, help="输出的金标准路径")
     ap.add_argument("--sheet", default=os.path.join(OUT, "blind_labels.csv"),
                     help="原始盲标清单；当输入 CSV 只含 id/verdict/reason（AI 标注常见）时，"
@@ -92,16 +94,16 @@ def main() -> int:
             changed[(rec.get("verdict", "(未标)"), v)] += 1
         rec["verdict"] = v
         rec["reason"] = (r.get("reason") or "").strip()
-        rec["source"] = "human"
+        rec["source"] = args.kind
         if args.rater:
             rec["rater"] = args.rater
         line = (r.get("line") or "").strip()
         if line.isdigit():
             rec["line"] = int(line)
 
-    n_human = sum(1 for g in doc["labels"] if g.get("source") == "human")
-    doc["source"] = ("混合来源：人工盲标 %d 条（source=human）+ 自评 %d 条（source=self）。"
-                     % (n_human, len(doc["labels"]) - n_human))
+    n_ext = sum(1 for g in doc["labels"] if g.get("source") not in (None, "self"))
+    doc["source"] = ("混合来源：独立标注 %d 条（source=%s）+ 自评 %d 条（source=self）。"
+                     % (n_ext, args.kind, len(doc["labels"]) - n_ext))
     if args.rater:
         doc["rater"] = args.rater
 
@@ -111,8 +113,8 @@ def main() -> int:
     print("=" * 74)
     print("已合并 -> %s" % os.path.relpath(args.out, BASE).replace("\\", "/"))
     print("=" * 74)
-    print("新增 %d 条 / 更新 %d 条；金标准现共 %d 条（其中人工 %d 条）"
-          % (added, updated, len(doc["labels"]), n_human))
+    print("新增 %d 条 / 更新 %d 条；金标准现共 %d 条（其中独立标注 %d 条，来源=%s）"
+          % (added, updated, len(doc["labels"]), n_ext, args.kind))
     if changed:
         print()
         diff = {k: c for k, c in changed.items() if k[0] != k[1]}
