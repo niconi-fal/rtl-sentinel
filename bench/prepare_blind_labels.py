@@ -1,17 +1,21 @@
-"""生成"盲标"清单，供独立第三方对告警做裁定（用于替换自产金标准）。
+"""生成"盲标"清单，供独立第三方（人或另一个 AI 模型）对告警做裁定。
 
 为什么需要
 ----------
 `bench/golden_adjudication.json` 的标注目前是"自产自评" —— 由本项目自己给出、
 再用它评测本项目自己，属循环论证。要让"裁定一致率"成为可信数字，必须由
-**没看过现有结论**的独立人员重新标注。
+**没看过现有结论**的独立方重新标注。
 
-产出两个文件（内容一致）：
-    out/blind_labels.md     给人阅读（含源码上下文，>> 标记告警行）
-    out/blind_labels.csv    给人填写（Excel 可打开，只需填 verdict / reason 两列）
+三种产物（内容一致，用途不同）
+    out/blind_labels.md     给**人**阅读（含源码上下文，>> 标记告警行）
+    out/blind_labels.csv    给**人**填写（Excel 可打开，填 verdict / reason）
+    out/label_prompt.md     给**另一个 AI 模型**：一份可直接整段粘贴的完整提示词
 
 关键：脚本**不读** `golden_adjudication.json`，输出里也不含任何现有判定结论，
-因此标注者是"盲"的。
+因此标注方是"盲"的。
+
+诚实声明：用另一个 AI 模型标注属**跨模型独立标注**，比自产自评强，但**不等于
+人工金标准**；对外表述时须如实说明标注者身份。
 
 用法
 ----
@@ -53,9 +57,56 @@ INSTRUCTION = """\
 代码上下文见下，`>>` 标记的是告警行。
 """
 
+PROMPT = """\
+你是一名资深数字 IC 设计 / 验证工程师。下面给你一批由静态检查工具从**成熟开源
+Verilog 工程**（RISC-V 软核 picoRV32、UART 收发器、AXI-Stream 基础设施库）中
+报出的告警，请你独立判断每条告警**是否指向一个「需要修改的真实问题」**。
+
+判断原则：
+- 只依据给出的源码上下文与告警描述判断，不要臆测没有提供的信息。
+- **不要假设"有告警就是问题"**。这些代码的作者都是有经验的工程师，经验上这类
+  告警里相当一部分并非缺陷，而是有意为之的合法写法，例如：
+  · 行为级仿真模型（不参与综合）
+  · 仅用于过程块内顺序计算的临时变量
+  · 有意的位宽截断 / 零扩展（如把 32 位结果取低 8 位驱动 LED）
+  · 仿真调试代码与断言（$display / $error / $fatal）
+  · 参数化设计中的互斥条件分支
+- 证据不足以判断设计意图时，务必输出 uncertain，不要臆测。
+
+判定取值（三选一，必须严格使用这三个英文词）：
+  confirmed      —— 是真实缺陷，应当修复
+  false_positive —— 否，这是设计者有意为之的合法写法，应豁免而非修复
+  uncertain      —— 证据不足以判断
+
+输出要求（严格遵守，否则无法自动汇总）：
+- **只输出 CSV**，不要任何解释、标题、前后缀或 Markdown 代码围栏
+- 表头固定为： `id,verdict,reason`
+- 每个 id 恰好一行；verdict 用上面三个词之一；reason 用一句话说明理由
+  （能引用具体信号名或行号最好），不要换行、不要包含逗号以外的分隔符问题
+- 不要遗漏任何 id，也不要新增 id
+
+待判定的告警如下：
+
+"""
+
+
+def render_items(res, groups, keys):
+    """把待判定条目渲染成文本（人读的 MD 与 AI 的提示词共用）。"""
+    out = []
+    for i, key in enumerate(keys, 1):
+        fs = groups[key]
+        f0 = fs[0]
+        out.append("### %d. `%s` L%d —— %s（%s）\n" % (i, key[0], f0.line, key[1], f0.rule_name))
+        out.append("- 工具告警：%s\n" % f0.message)
+        if len(fs) > 1:
+            out.append("- 该文件另有 %d 条同类告警（属同一判定单元，一并判定）\n" % (len(fs) - 1))
+        out.append("\n```verilog\n%s\n```\n\n"
+                   % _context_snippet(res.sources.get(f0.file, ""), f0.line))
+    return "".join(out)
+
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="生成盲标清单")
+    ap = argparse.ArgumentParser(description="生成盲标清单（给人 / 给 AI）")
     ap.add_argument("--corpus", default=CORPUS, help="待审查语料目录")
     ap.add_argument("--outdir", default=OUT, help="输出目录")
     ap.add_argument("--limit", type=int, default=0, help="抽样个数；0 = 全部")
@@ -77,6 +128,8 @@ def main() -> int:
     os.makedirs(args.outdir, exist_ok=True)
     csv_path = os.path.join(args.outdir, "blind_labels.csv")
     md_path = os.path.join(args.outdir, "blind_labels.md")
+    prompt_path = os.path.join(args.outdir, "label_prompt.md")
+    items = render_items(res, groups, keys)
 
     with open(csv_path, "w", encoding="utf-8-sig", newline="") as fh:
         w = csv.writer(fh)
@@ -92,27 +145,22 @@ def main() -> int:
     with open(md_path, "w", encoding="utf-8") as fh:
         fh.write(INSTRUCTION)
         fh.write("\n共 **%d** 个判定单元。\n\n---\n\n" % len(keys))
-        for i, key in enumerate(keys, 1):
-            fs = groups[key]
-            f0 = fs[0]
-            fh.write("### %d. `%s` L%d —— %s（%s）\n\n"
-                     % (i, key[0], f0.line, key[1], f0.rule_name))
-            fh.write("- 工具告警：%s\n" % f0.message)
-            if len(fs) > 1:
-                fh.write("- 该文件另有 %d 条同类告警（同一判定单元，一并判定）\n"
-                         % (len(fs) - 1))
-            ctx = _context_snippet(res.sources.get(f0.file, ""), f0.line)
-            fh.write("\n```verilog\n%s\n```\n\n" % ctx)
+        fh.write(items)
+
+    with open(prompt_path, "w", encoding="utf-8") as fh:
+        fh.write(PROMPT)
+        fh.write(items)
 
     print("=" * 74)
-    print("盲标清单已生成")
+    print("盲标清单已生成（判定单元 %d 个）" % len(keys))
     print("=" * 74)
-    print("判定单元 : %d 个（(文件, 规则) 去重）" % len(keys))
     print("给人阅读 : %s" % os.path.relpath(md_path, BASE).replace("\\", "/"))
     print("给人填写 : %s" % os.path.relpath(csv_path, BASE).replace("\\", "/"))
+    print("给 AI 粘贴: %s   ← 整段复制到另一个模型即可" % os.path.relpath(prompt_path, BASE).replace("\\", "/"))
     print()
-    print("下一步：把这两个文件发给一位独立的数字设计同学，请其填 CSV 的")
-    print("       verdict / reason 两列，再用 bench/merge_blind_labels.py 合并。")
+    print("回填后合并：")
+    print("  python bench/merge_blind_labels.py out/blind_labels.csv --rater \"同学A\"")
+    print("  python bench/merge_blind_labels.py out/ai_labels.csv --rater \"GPT-5\"   # AI 只给 id/verdict/reason 也行")
     print("=" * 74)
     return 0
 

@@ -23,6 +23,7 @@ from collections import Counter
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GOLDEN = os.path.join(BASE, "bench", "golden_adjudication.json")
+OUT = os.path.join(BASE, "out")
 VERDICTS = {"confirmed", "false_positive", "uncertain"}
 
 
@@ -31,10 +32,30 @@ def main() -> int:
     ap.add_argument("csv_path", help="回填后的 blind_labels.csv")
     ap.add_argument("--rater", default="", help="标注者标识（写入金标准，便于审计）")
     ap.add_argument("--out", default=GOLDEN, help="输出的金标准路径")
+    ap.add_argument("--sheet", default=os.path.join(OUT, "blind_labels.csv"),
+                    help="原始盲标清单；当输入 CSV 只含 id/verdict/reason（AI 标注常见）时，"
+                         "用它按 id 回填 file/rule_id")
     args = ap.parse_args()
 
     with open(args.csv_path, "r", encoding="utf-8-sig", newline="") as fh:
         rows = list(csv.DictReader(fh))
+
+    # 输入可能只含 id/verdict/reason（例如另一个 AI 模型的输出）——按 id 从原始
+    # 清单回填 file/rule_id/line，避免要求标注方复述这些字段（易抄错）。
+    if any(not ((r.get("file") or "").strip() and (r.get("rule_id") or "").strip())
+           for r in rows):
+        if not os.path.isfile(args.sheet):
+            print("!! 输入缺少 file/rule_id，且找不到原始清单 %s（用 --sheet 指定）"
+                  % args.sheet)
+            return 2
+        with open(args.sheet, "r", encoding="utf-8-sig", newline="") as fh:
+            sheet = {(s.get("id") or "").strip(): s for s in csv.DictReader(fh)}
+        for r in rows:
+            if not ((r.get("file") or "").strip() and (r.get("rule_id") or "").strip()):
+                s = sheet.get((r.get("id") or "").strip())
+                if s:
+                    r["file"], r["rule_id"], r["line"] = (
+                        s.get("file"), s.get("rule_id"), s.get("line"))
 
     filled, problems = [], []
     for r in rows:
