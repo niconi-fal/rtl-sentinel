@@ -129,8 +129,34 @@ def main() -> int:
                  ",".join(sorted(ext_sources))))
     else:
         print("独立标注子集: 尚无（金标准仍为自产自评；见 bench/prepare_blind_labels.py）")
+
+    # 二元协议下的"选择性预测"指标。二元金标准没有"无法判定"这一档，若直接把
+    # 工具的 uncertain 计为错误，会把"弃权"和"判错"混为一谈、掩盖真实能力。
+    # 因此分开报告：覆盖率（弃权率）、不弃权时的准确率、以及对「需改代码」的召回。
+    bin_keys = [k for k in sorted(by_key) if golden[k].get("decision")]
+    if bin_keys:
+        gold_decisive = [k for k in bin_keys if golden[k].get("decision") != "abstain"]
+        tool_abstain = [k for k in bin_keys
+                        if any(f.llm_verdict == "uncertain" for f in by_key[k])]
+        tool_decisive = [k for k in gold_decisive if k not in tool_abstain]
+        hit = sum(1 for k in tool_decisive
+                  if all(f.llm_verdict == golden[k]["verdict"] for f in by_key[k]))
+        change_keys = [k for k in gold_decisive if golden[k].get("decision") == "change"]
+        change_hit = sum(1 for k in change_keys
+                         if all(f.llm_verdict == "confirmed" for f in by_key[k]))
+        print()
+        print("二元协议 · 选择性预测指标（金标准含 %d 个二元单元）" % len(bin_keys))
+        print("  工具弃权率(uncertain)  : %.1f%%  (%d/%d)"
+              % (len(tool_abstain) / len(bin_keys) * 100.0, len(tool_abstain), len(bin_keys)))
+        print("  不弃权时的准确率       : %s"
+              % (("%.1f%%  (%d/%d)" % (hit / len(tool_decisive) * 100.0, hit, len(tool_decisive)))
+                 if tool_decisive else "无法计算（全部弃权）"))
+        print("  对「需改代码」的召回   : %s"
+              % (("%.1f%%  (%d/%d)" % (change_hit / len(change_keys) * 100.0,
+                                       change_hit, len(change_keys)))
+                 if change_keys else "（本次金标准无 change 单元）"))
     print()
-    print("混淆矩阵（人工 ↓ / 模型 →，按告警条数）")
+    print("混淆矩阵（标注 ↓ / 模型 →，按告警条数）")
     print("  %-16s %10s %14s %11s" % ("", *VERDICTS))
     for gv in VERDICTS:
         row = [confused.get((gv, mv), 0) for mv in VERDICTS]

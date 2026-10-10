@@ -25,6 +25,8 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GOLDEN = os.path.join(BASE, "bench", "golden_adjudication.json")
 OUT = os.path.join(BASE, "out")
 VERDICTS = {"confirmed", "false_positive", "uncertain"}
+# 可操作二元量表 -> 三态（保留原始取值写入 decision 字段，供选择性指标使用）
+BINARY_MAP = {"change": "confirmed", "waive": "false_positive", "abstain": "uncertain"}
 
 
 def main() -> int:
@@ -61,13 +63,14 @@ def main() -> int:
 
     filled, problems = [], []
     for r in rows:
-        v = (r.get("verdict") or "").strip().lower()
-        if not v:
+        raw = (r.get("verdict") or r.get("decision") or "").strip().lower()
+        if not raw:
             continue                                  # 未填 -> 跳过（允许部分标注）
+        v = BINARY_MAP.get(raw, raw)                  # change/waive/abstain -> 三态
         if v not in VERDICTS:
-            problems.append("%s %s: 非法 verdict=%r" % (r.get("file"), r.get("rule_id"), v))
+            problems.append("%s %s: 非法取值 %r" % (r.get("file"), r.get("rule_id"), raw))
             continue
-        filled.append((r, v))
+        filled.append((r, v, raw))
     if problems:
         print("!! %d 行填写不合法，已跳过：" % len(problems))
         for p in problems[:10]:
@@ -82,7 +85,7 @@ def main() -> int:
 
     changed = Counter()
     added = updated = 0
-    for r, v in filled:
+    for r, v, raw in filled:
         key = ((r.get("file") or "").strip(), (r.get("rule_id") or "").strip())
         rec = golden.get(key)
         if rec is None:
@@ -93,6 +96,7 @@ def main() -> int:
             updated += 1
             changed[(rec.get("verdict", "(未标)"), v)] += 1
         rec["verdict"] = v
+        rec["decision"] = raw                         # 原始取值（二元协议下为 change/waive/abstain）
         rec["reason"] = (r.get("reason") or "").strip()
         rec["source"] = args.kind
         if args.rater:
@@ -119,7 +123,7 @@ def main() -> int:
         print()
         diff = {k: c for k, c in changed.items() if k[0] != k[1]}
         if diff:
-            print("与原自评的差异（原 → 人工）：")
+        print("与原自评的差异（原 → 标注方）：")
             for (o, n), c in sorted(diff.items(), key=lambda kv: -kv[1]):
                 print("  %-16s → %-16s %d 条" % (o, n, c))
         same = sum(c for (o, n), c in changed.items() if o == n)
