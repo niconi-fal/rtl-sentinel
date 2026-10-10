@@ -67,6 +67,7 @@ STRUCT_RE = re.compile(
     r"(?<![\w$])(?:begin|else|generate|case|casex|casez|default)(?![\w$])")
 COND_RE = re.compile(r"(?<![\w$])(?:if|for|while|repeat|foreach)\s*\(")
 LABEL_RE = re.compile(r"[A-Za-z_]\w*\s*:[^=:]")
+LABEL2_RE = re.compile(r":\s*[A-Za-z_]\w*")      # begin : name 的写法（冒号在前）
 #: 块结束关键字。它们**没有分号**，会被并入下一条语句，使该语句以 `end...` 开头、
 #: 分类失败（实测因此漏掉 axis_async_fifo / axis_demux 的寄存器声明）。
 BLOCK_END_RE = re.compile(
@@ -292,6 +293,39 @@ def read_identifiers(text: str) -> List[str]:
 # 声明解析
 # --------------------------------------------------------------------------
 
+def strip_directives(text: str) -> str:
+    """清掉文本里的编译器指令记号（连同紧跟的宏名参数），长度保持不变。
+
+    端口表 / 声明文本里也可能夹带指令，例如 picorv32 的 ANSI 端口表：
+        `ifdef RISCV_FORMAL
+            output rvfi_valid,
+        `endif
+    按逗号切分后，条目会以反引号开头 —— 若不清理，方向/存储类匹配不上，
+    宏名反而会被当成信号名（实测因此漏掉 rvfi_valid / trace_valid）。
+    只吃"宏名"这一种参数、且要求它不是 Verilog 关键字 —— 这样
+    `FORMAL_KEEP reg [63:0] x; 里的 reg 不会被吃掉。
+    """
+    out = []
+    i, n = 0, len(text)
+    while i < n:
+        if text[i] == "`":
+            j = i + 1
+            while j < n and (text[j].isalnum() or text[j] == "_"):
+                j += 1
+            k = j
+            while k < n and text[k].isspace():
+                k += 1
+            m = re.match(r"[A-Za-z_]\w*", text[k:])
+            if m and m.group(0) not in KEYWORDS:
+                k += m.end()
+            out.append(" " * (k - i))
+            i = k
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
 def parse_decl_text(
     text: str,
     line: int,
@@ -308,6 +342,7 @@ def parse_decl_text(
     text = text.strip().rstrip(",").strip()
     # 声明文本里可能夹带属性（如 `input (* foo *) wire x`），先清掉再分类
     text = ATTR_RE.sub(" ", text).strip()
+    text = strip_directives(text).strip()
     if not text:
         return
 
@@ -810,6 +845,8 @@ def _skip_preamble(text: str, k: int, limit: int) -> int:
             k = j
             continue
         m = LABEL_RE.match(text, k)
+        if not (m and m.end() > k):
+            m = LABEL2_RE.match(text, k)
         if m and m.end() > k:
             k = m.end()
             continue

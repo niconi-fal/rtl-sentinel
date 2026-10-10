@@ -364,6 +364,11 @@ def r004_multiple_driver(mod: Module, ctx: Dict) -> List[Finding]:
         for inst in mod.instances:
             for conn in inst.connections:
                 port, sig_name = parse_connection(conn)
+                # 只把"纯标识符"连接算作驱动源：数组元素 / 位选 / 拼接 / 常量连接
+                # （如 .m_axis_tdata(axis_tdata[i])）不能算 —— 否则一个逐元素赋值的
+                # 数组会被误判成"整条信号被实例输出驱动"，与其它元素的 assign 撞成
+                # 假多驱动（实测在 axis_pipeline_register 上产生 8 条误报）。
+                sig_name = conn_signal_exact(conn)
                 if not port or not sig_name or sig_name not in mod.signals:
                     continue
                 direction = index.port_direction(inst.module_type, port)

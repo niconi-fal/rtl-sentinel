@@ -10,7 +10,7 @@
 ``axis_tvalid_reg`` 的声明以 ``(* shreg_extract = "no" *)`` 开头，R003 因此漏掉，
 而那个模式**曾被上游作者真实修复**）。
 
-本脚本度量影响面，并作为**回归棘轮**：只允许变好，不允许变差。
+本脚本度量影响面（当前 **0/1563**），并作为**回归棘轮**：只允许变好，不允许变差。
 
 两个度量
 --------
@@ -36,11 +36,10 @@ from rtl_sentinel.parser import KEYWORDS            # noqa: E402
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS = os.path.join(BASE, "bench", "corpus")
 
-# 回归棘轮：当前实测值（2026-10-10，解析器修完属性/指令/块结束词/for 头/结构前导之后）。
-# 从最初的 11 模块 / 59 目标降到 5 模块 / 9 目标（0.58%）。剩余的属零散情形，
-# 未逐一定位根因，由本棘轮盯住；指标变好时应继续下调这两个数。
-BASELINE_MODULES_WITH_UNKNOWN_TARGETS = 5
-BASELINE_UNKNOWN_TARGETS = 9
+# 回归棘轮：当前实测值（2026-10-10）。**缺口已闭合：0 / 0**。
+# 起点是 11 模块 / 59 目标（3.8%）。棘轮只允许变好；一旦回升即为回归。
+BASELINE_MODULES_WITH_UNKNOWN_TARGETS = 0
+BASELINE_UNKNOWN_TARGETS = 0
 BASELINE_UNKNOWN_TARGETS = 59
 
 DECL_RE = re.compile(
