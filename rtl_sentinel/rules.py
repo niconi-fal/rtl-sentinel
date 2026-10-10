@@ -16,11 +16,16 @@ R005 敏感列表不完整      组合块漏列被读信号
 R006 跨时钟域未同步      信号跨时钟域被直接采样
 R007 不可综合结构        含仿真专用语法
 R008 未使用 / 悬空信号   声明后从未被读取或从未被驱动
+R009 实例端口位宽不匹配   跨文件比对实例连接与模块端口定义
+R010 实例端口未连接      实例化时漏连的输入端口
+R011 组合逻辑误用非阻塞   组合块内使用 <=，仿真与综合行为不一致
+R012 赋值运算符误用      assign x == y; 把赋值误写成比较
+R013 实例化连接方式混用   同一实例内混用按名与按位置连接
 """
 from __future__ import annotations
 
 import re
-from typing import Callable, Dict, List, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from .model import AlwaysBlock, Finding, Module
 from .parser import (IDENT_RE, KEYWORDS, eval_const, min_width, parse_literal,
