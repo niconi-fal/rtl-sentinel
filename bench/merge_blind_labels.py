@@ -1,0 +1,113 @@
+"""把第三方回填的盲标结果并入金标准（bench/golden_adjudication.json）。
+
+用法
+----
+    python bench/merge_blind_labels.py out/blind_labels.csv --rater "同学 A"
+    python bench/merge_blind_labels.py out/blind_labels.csv --out /tmp/test.json  # 试跑
+
+合并规则
+--------
+  · 已填 verdict 的判定单元：verdict/reason 换成人工结论，标记 source="human"
+  · 未填的保持原样（source="self"），供对照
+  · 打印"原自评 → 人工"的差异汇总，便于发现之前自评错在哪
+
+改动请用 git commit 记录，以便追溯标注来源。
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import os
+from collections import Counter
+
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+GOLDEN = os.path.join(BASE, "bench", "golden_adjudication.json")
+VERDICTS = {"confirmed", "false_positive", "uncertain"}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="合并盲标结果到金标准")
+    ap.add_argument("csv_path", help="回填后的 blind_labels.csv")
+    ap.add_argument("--rater", default="", help="标注者标识（写入金标准，便于审计）")
+    ap.add_argument("--out", default=GOLDEN, help="输出的金标准路径")
+    args = ap.parse_args()
+
+    with open(args.csv_path, "r", encoding="utf-8-sig", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+
+    filled, problems = [], []
+    for r in rows:
+        v = (r.get("verdict") or "").strip().lower()
+        if not v:
+            continue                                  # 未填 -> 跳过（允许部分标注）
+        if v not in VERDICTS:
+            problems.append("%s %s: 非法 verdict=%r" % (r.get("file"), r.get("rule_id"), v))
+            continue
+        filled.append((r, v))
+    if problems:
+        print("!! %d 行填写不合法，已跳过：" % len(problems))
+        for p in problems[:10]:
+            print("   " + p)
+    if not filled:
+        print("没有可合并的行（verdict 列为空？）。")
+        return 2
+
+    with open(GOLDEN, "r", encoding="utf-8") as fh:
+        doc = json.load(fh)
+    golden = {(g["file"], g["rule_id"]): g for g in doc["labels"]}
+
+    changed = Counter()
+    added = updated = 0
+    for r, v in filled:
+        key = ((r.get("file") or "").strip(), (r.get("rule_id") or "").strip())
+        rec = golden.get(key)
+        if rec is None:
+            rec = {"file": key[0], "rule_id": key[1]}
+            doc["labels"].append(rec)
+            added += 1
+        else:
+            updated += 1
+            changed[(rec.get("verdict", "(未标)"), v)] += 1
+        rec["verdict"] = v
+        rec["reason"] = (r.get("reason") or "").strip()
+        rec["source"] = "human"
+        if args.rater:
+            rec["rater"] = args.rater
+        line = (r.get("line") or "").strip()
+        if line.isdigit():
+            rec["line"] = int(line)
+
+    n_human = sum(1 for g in doc["labels"] if g.get("source") == "human")
+    doc["source"] = ("混合来源：人工盲标 %d 条（source=human）+ 自评 %d 条（source=self）。"
+                     % (n_human, len(doc["labels"]) - n_human))
+    if args.rater:
+        doc["rater"] = args.rater
+
+    with open(args.out, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, ensure_ascii=False, indent=2)
+
+    print("=" * 74)
+    print("已合并 -> %s" % os.path.relpath(args.out, BASE).replace("\\", "/"))
+    print("=" * 74)
+    print("新增 %d 条 / 更新 %d 条；金标准现共 %d 条（其中人工 %d 条）"
+          % (added, updated, len(doc["labels"]), n_human))
+    if changed:
+        print()
+        diff = {k: c for k, c in changed.items() if k[0] != k[1]}
+        if diff:
+            print("与原自评的差异（原 → 人工）：")
+            for (o, n), c in sorted(diff.items(), key=lambda kv: -kv[1]):
+                print("  %-16s → %-16s %d 条" % (o, n, c))
+        same = sum(c for (o, n), c in changed.items() if o == n)
+        print("  （与原自评一致 %d 条）" % same)
+    print()
+    print("下一步：")
+    print("  1) python bench/evaluate_adjudication.py     # 离线复评（免费）")
+    print("  2) 再用真实 LLM 跑一次，得到「人工子集」的一致率")
+    print("  3) git commit 记录本次标注（golden_adjudication.json）")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

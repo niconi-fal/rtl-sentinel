@@ -53,9 +53,10 @@ def main() -> int:
                     default=os.environ.get("RTL_SENTINEL_BASE_URL"),
                     help="OpenAI 兼容 API 地址（也可用环境变量 RTL_SENTINEL_BASE_URL）")
     ap.add_argument("--corpus", default=CORPUS, help="待审查语料目录")
+    ap.add_argument("--golden", default=GOLDEN, help="金标准路径（默认 bench/golden_adjudication.json）")
     args = ap.parse_args()
 
-    with open(GOLDEN, "r", encoding="utf-8") as fh:
+    with open(args.golden, "r", encoding="utf-8") as fh:
         doc = json.load(fh)
     golden: Dict[Tuple[str, str], dict] = {
         (g["file"], g["rule_id"]): g for g in doc["labels"]}
@@ -69,20 +70,36 @@ def main() -> int:
         provider = MockProvider()
     Reasoner(provider).adjudicate(res.findings, sources=res.sources)
 
-    total = matched = 0
-    confused: collections.Counter = collections.Counter()
-    mismatches = []
+    # ---- 计数 ----
+    # 判定单元 = (文件, 规则) —— 与金标准的粒度一致。
+    # 注意：同一判定单元可能对应多条告警；旧口径按“告警条数”计数会把同一个
+    # 标注重复计入多次（43 个独立标注会被算成 127 条），虚增权重、误导读者。
+    # 因此这里以“独立判定单元”为准，“告警条数”仅作对照保留。
+    by_key: Dict[Tuple[str, str], list] = collections.defaultdict(list)
     for f in res.sorted_findings():
         key = (os.path.basename(f.file), f.rule_id)
-        g = golden.get(key)
-        if g is None:
-            continue
-        total += 1
-        ok = (f.llm_verdict == g["verdict"])
-        matched += ok
-        confused[(g["verdict"], f.llm_verdict)] += 1
-        if not ok:
-            mismatches.append((key, g["verdict"], f.llm_verdict, f.line, f.message))
+        if key in golden:
+            by_key[key].append(f)
+
+    confused: collections.Counter = collections.Counter()
+    mismatches = []
+    key_ok = n_find = hit_find = 0
+    human_keys = human_ok = 0
+    for key in sorted(by_key):
+        g = golden[key]
+        fs = by_key[key]
+        all_ok = all(f.llm_verdict == g["verdict"] for f in fs)
+        key_ok += all_ok
+        if g.get("source") == "human":
+            human_keys += 1
+            human_ok += all_ok
+        for f in fs:
+            n_find += 1
+            ok = (f.llm_verdict == g["verdict"])
+            hit_find += ok
+            confused[(g["verdict"], f.llm_verdict)] += 1
+            if not ok:
+                mismatches.append((key, g["verdict"], f.llm_verdict, f.line, f.message))
 
     print("=" * 88)
     print("语义推理层裁定评测")
@@ -90,7 +107,8 @@ def main() -> int:
     print("推理后端   : %s" % provider.name)
     print("审查语料   : %s" % os.path.relpath(args.corpus, BASE).replace("\\", "/"))
     print("语料规模   : %d 文件 / %d 条告警" % (len(res.files), len(res.findings)))
-    print("金标准覆盖 : %d 条（已人工复核的 (文件, 规则) 组合）" % total)
+    print("判定单元   : %d 个（(文件, 规则) 去重 —— 与金标准粒度一致）" % len(by_key))
+    print("告警条数   : %d 条（同一判定单元可对应多条告警）" % n_find)
 
     # 调用失败的条数：若占比很高，多半是端点/密钥配置问题，而非裁定能力问题
     failed = sum(1 for f in res.findings if "LLM 调用失败" in f.llm_reason)
@@ -98,10 +116,18 @@ def main() -> int:
         print("⚠ 调用失败   : %d 条 —— 结果不可信，请检查 --base-url / API Key 配置"
               % failed)
 
-    acc = (matched / total * 100.0) if total else 0.0
-    print("裁定一致率 : %.1f%%  (%d/%d)" % (acc, matched, total))
+    k_acc = (key_ok / len(by_key) * 100.0) if by_key else 0.0
+    f_acc = (hit_find / n_find * 100.0) if n_find else 0.0
     print()
-    print("混淆矩阵（人工 ↓ / 模型 →）")
+    print("一致率（以判定单元为准）: %.1f%%  (%d/%d)" % (k_acc, key_ok, len(by_key)))
+    print("一致率（按告警条数，旧口径，仅对照）: %.1f%%  (%d/%d)" % (f_acc, hit_find, n_find))
+    if human_keys:
+        print("独立人工标注子集: %d 个单元，一致率 %.1f%%  (%d/%d)"
+              % (human_keys, human_ok / human_keys * 100.0, human_ok, human_keys))
+    else:
+        print("独立人工标注子集: 尚无（金标准仍为自产自评；见 bench/prepare_blind_labels.py）")
+    print()
+    print("混淆矩阵（人工 ↓ / 模型 →，按告警条数）")
     print("  %-16s %10s %14s %11s" % ("", *VERDICTS))
     for gv in VERDICTS:
         row = [confused.get((gv, mv), 0) for mv in VERDICTS]
