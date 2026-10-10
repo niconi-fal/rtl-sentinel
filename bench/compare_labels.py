@@ -30,7 +30,8 @@ from typing import Dict, Tuple
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from rtl_sentinel.engine import ReviewEngine       # noqa: E402
-from rtl_sentinel.llm import MockProvider, Reasoner  # noqa: E402
+from rtl_sentinel.llm import (MockProvider, OpenAICompatProvider,  # noqa: E402
+                              Reasoner)
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS = os.path.join(BASE, "bench", "corpus")
@@ -66,6 +67,8 @@ def main() -> int:
     ap.add_argument("--self", dest="self_path", help="自评金标准 json（可选）")
     ap.add_argument("--sheet", default=SHEET, help="id -> (文件, 规则) 映射表")
     ap.add_argument("--corpus", default=CORPUS)
+    ap.add_argument("--backend", choices=["offline", "llm"], default="offline",
+                    help="offline=离线启发式后端；llm=系统的真实后端（读 RTL_SENTINEL_* 配置）")
     args = ap.parse_args()
 
     sheet = load_sheet(args.sheet)
@@ -74,7 +77,14 @@ def main() -> int:
     # 工具（离线后端）在每个判定单元上的裁定集合
     eng = ReviewEngine()
     res = eng.review_path(args.corpus)
-    Reasoner(MockProvider()).adjudicate(res.findings, sources=res.sources)
+    if args.backend == "llm":
+        provider = OpenAICompatProvider(
+            model=os.environ.get("RTL_SENTINEL_MODEL", "gpt-4o-mini"),
+            base_url=os.environ.get("RTL_SENTINEL_BASE_URL"))
+    else:
+        provider = MockProvider()
+    Reasoner(provider).adjudicate(res.findings, sources=res.sources)
+    failed = sum(1 for f in res.findings if "LLM 调用失败" in f.llm_reason)
     tool: Dict[Tuple[str, str], set] = {}
     for f in res.findings:
         tool.setdefault((os.path.basename(f.file), f.rule_id), set()).add(f.llm_verdict)
@@ -95,7 +105,8 @@ def main() -> int:
     def unit_ok(key: Tuple[str, str], v: str) -> bool:
         return tool.get(key) == {v}
 
-    print("# 多标注集对照（判定单元 = (文件, 规则)）\n")
+    print("# 多标注集对照（判定单元 = (文件, 规则)，推理后端 = %s%s）\n"
+          % (provider.name, ("，调用失败 %d 条！" % failed) if failed else ""))
     print("| 标注集 | 覆盖单元 | 与工具一致率 | 内部分布 | 弃权率 | 不弃权时准确率 | change 召回 |")
     print("| --- | --- | --- | --- | --- | --- | --- |")
     for name, ds in sets.items():
