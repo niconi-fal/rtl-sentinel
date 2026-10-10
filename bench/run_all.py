@@ -48,7 +48,7 @@ def main() -> int:
     results = []
 
     for rel in ("bench/evaluate.py", "bench/smoke_parse.py", "bench/smoke_rules.py",
-                "bench/evaluate_backtest.py"):
+                "bench/evaluate_backtest.py", "bench/check_symbol_coverage.py"):
         rc = run([rel])
         print("[%s] %-26s (exit=%d)" % ("PASS" if rc == 0 else "FAIL", rel, rc))
         results.append((rel, rc == 0))
