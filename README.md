@@ -3,6 +3,8 @@
 **面向集成电路设计的 RTL 智能审查 Agent** —— 静态规则引擎负责确定性事实，
 LLM 负责语义裁定与修复建议。**零第三方依赖**，一条命令即可运行。
 
+[![RTL Sentinel Regression](https://github.com/niconi-fal/rtl-sentinel/actions/workflows/regression.yml/badge.svg?branch=main)](https://github.com/niconi-fal/rtl-sentinel/actions/workflows/regression.yml)
+
 ```
 python run_demo.py
 ```
@@ -433,7 +435,7 @@ rtl-sentinel/
 │   └── good/                 4 个干净基线（度量误报率）
 ├── bench/
 │   ├── evaluate.py           评测：规则级 P/R/F1 + 定位级(行号)校验
-│   ├── check_verilator.py    交叉验证：Verilator 独立复核 R001/R002/R004
+│   ├── check_verilator.py    交叉验证：Verilator 独立复核 R003/R004
 │   ├── run_all.py            一键离线回归入口
 │   ├── evaluate_adjudication.py  语义推理层裁定准确率评测
 │   ├── evaluate_lintllm.py   第三方学术 benchmark 评估
@@ -465,6 +467,7 @@ rtl-sentinel/
 **路线图**
 
 - [x] 在开源 RTL 仓库上做增量验证，度量真实误报率（error 397 → 27，见第 4.2 节）
+- [x] 引入外部权威工具交叉验证：Verilator 独立佐证 R003（BLKANDNBLK）/ R004（MULTIDRIVEN），见第 4.6 节
 - [ ] 建立 LLM 裁定 vs 人工标注的一致性评测，量化语义推理层带来的准确率增益
 - [ ] `generate` 分支语义展开，支持参数化设计的完整跨模块检查
 - [ ] 跨模块 CDC 检测（需建立时钟树与模块层级视图）
