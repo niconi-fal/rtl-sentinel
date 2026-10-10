@@ -409,7 +409,25 @@ class Reasoner:
             f.llm_verify = "确认综合日志无相关报错。"
             return
 
-        # ④ 不依赖设计意图的确定性静态事实
+        # ④ 时序块内对**跨块使用**的寄存器用阻塞赋值 —— 判为真实缺陷。
+        #
+        # 为什么敢下 confirmed（不再是 uncertain）：三方证据一致
+        #   ① 上游项目曾真实修复过该模式（见 bench/backtest/axis_pipeline_fifo_assignment_type，
+        #      作者把 `=` 改成 `<=`）；
+        #   ② 两个独立标注模型（豆包 2.1 lite 与 GLM 5.3）在二元协议下唯一共同判为
+        #      `change` 的条目，正是本模式（axis_ll_bridge.v R003）；
+        #   ③ 判据本身是确定的：阻塞赋值 → 仿真与综合的更新时刻不一致。
+        # 注意：已被 `_is_block_local` 认定为"块内临时量"的会在 ② 分支返回 false_positive，
+        # 因此走到这里的一定是**跨块使用**的寄存器。
+        if f.rule_id == "R003" and "block_local_temp" not in f.tags:
+            f.llm_verdict = "confirmed"
+            f.llm_reason = ("时序块内对跨块使用的寄存器使用阻塞赋值 —— 仿真与综合的更新时刻"
+                            "不一致，是真实缺陷（该模式曾被上游项目真实修复）。")
+            f.llm_patch = _PATCH_HINTS.get("R003", "")
+            f.llm_verify = self._verify_hint(f)
+            return
+
+        # ⑤ 不依赖设计意图的确定性静态事实
         if f.rule_id in _HARD_FACTS:
             f.llm_verdict = "confirmed"
             f.llm_reason = ("规则 %s 命中的是不依赖设计意图的确定性静态事实（%s），"

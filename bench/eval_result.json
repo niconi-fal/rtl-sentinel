@@ -5,6 +5,20 @@
   },
   "samples": [
     {
+      "sample": "bad/assign_eq_misuse.v",
+      "expect": [
+        "R012@13"
+      ],
+      "got_rules": [
+        "R012"
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
       "sample": "bad/cdc_buggy.v",
       "expect": [
         "R004@30",
@@ -17,6 +31,34 @@
         "R008"
       ],
       "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
+      "sample": "bad/comb_nonblocking.v",
+      "expect": [
+        "R011@15"
+      ],
+      "got_rules": [
+        "R011"
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "loc_missing": [],
+      "loc_extra": []
+    },
+    {
+      "sample": "bad/conn_mixed.v",
+      "expect": [
+        "R013@18"
+      ],
+      "got_rules": [
+        "R013"
+      ],
+      "tp": 1,
       "fp": 0,
       "fn": 0,
       "loc_missing": [],
@@ -159,7 +201,7 @@
     }
   ],
   "total": {
-    "tp": 21,
+    "tp": 24,
     "fp": 0,
     "fn": 0,
     "precision": 1.0,
@@ -167,15 +209,15 @@
     "f1": 1.0
   },
   "location": {
-    "tp": 32,
+    "tp": 35,
     "fp": 0,
     "fn": 0,
     "precision": 1.0,
     "recall": 1.0
   },
   "severity": {
-    "error": 11,
-    "warning": 13,
+    "error": 13,
+    "warning": 14,
     "info": 8
   }
 }
