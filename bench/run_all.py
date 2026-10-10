@@ -34,7 +34,8 @@ PY = sys.executable
 # 系统性误报，须人工确认后再决定是否更新基线 —— 更新基线本身应是一次有意的
 # 决策，而不是顺手把数字改大。
 CORPUS_ERROR_BASELINE = 27
-CORPUS_FINDING_BASELINE = 127
+CORPUS_FINDING_BASELINE = 128      # 修好解析器符号覆盖后，多出 1 条**真实**新发现
+                                   # （picorv32.v R008：dbg_ascii_state 从未被读取）
 
 
 def run(args, timeout=180):

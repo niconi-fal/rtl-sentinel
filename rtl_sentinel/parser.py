@@ -59,6 +59,27 @@ DECL_KEYWORD_RE = re.compile(
     r"bit|tri|wand|wor|supply0|supply1|real|time|realtime|int|byte|shortint|longint)\b"
 )
 SAFE_EXPR_RE = re.compile(r"^[0-9A-Za-z_+\-*/()\s]+$")
+#: Verilog/SystemVerilog 属性 (* ... *)。它**没有分号终止**，会被"按 ; 切分"的
+#: 语句扫描并入下一条语句，使该语句以 `(*` 开头、声明/实例分类失败
+#: （实测因此漏掉 axis_pipeline_fifo 的 8 个寄存器声明，并造成 R003 静默漏报）。
+ATTR_RE = re.compile(r"\(\s*\*.*?\*\s*\)", re.S)
+STRUCT_RE = re.compile(
+    r"(?<![\w$])(?:begin|else|generate|case|casex|casez|default)(?![\w$])")
+COND_RE = re.compile(r"(?<![\w$])(?:if|for|while|repeat|foreach)\s*\(")
+LABEL_RE = re.compile(r"[A-Za-z_]\w*\s*:[^=:]")
+#: 块结束关键字。它们**没有分号**，会被并入下一条语句，使该语句以 `end...` 开头、
+#: 分类失败（实测因此漏掉 axis_async_fifo / axis_demux 的寄存器声明）。
+BLOCK_END_RE = re.compile(
+    r"(?<![\w$])(?:end|endcase|endfunction|endtask|endmodule|endgenerate|"
+    r"endprimitive|endspecify|endtable|endinterface|endpackage|endclass|endprogram|"
+    r"join|join_any|join_none)(?![\w$])")
+#: 编译器指令（整条占一行）。它们的**参数也不是代码**，必须连参数一起抹掉，
+#: 否则参数会粘到下一条语句前（如 `ifndef PICORV32_REGS 后的宏名）。
+#: 注意与"用户宏当属性用"的情形区分（如 `FORMAL_KEEP reg x;）—— 那种只抹记号。
+DIRECTIVE_RE = re.compile(
+    r"(?<![\w`])`(?:ifdef|ifndef|elsif|else|endif|define|undef|include|timescale|"
+    r"default_nettype|resetall|celldefine|endcelldefine|unconnected_drive|"
+    r"nounconnected_drive|line|pragma|begin_keywords|end_keywords)\b")
 
 
 # --------------------------------------------------------------------------
@@ -285,6 +306,8 @@ def parse_decl_text(
         其中 rst_n 继承 input 方向。
     """
     text = text.strip().rstrip(",").strip()
+    # 声明文本里可能夹带属性（如 `input (* foo *) wire x`），先清掉再分类
+    text = ATTR_RE.sub(" ", text).strip()
     if not text:
         return
 
@@ -753,6 +776,48 @@ def parse_source(raw: str, path: str = "<memory>") -> Tuple[List[Module], List[s
     return modules, raw_lines
 
 
+def _skip_preamble(text: str, k: int, limit: int) -> int:
+    """跳过语句开头的"结构噪声"，让被并进来的声明重新可分类。
+
+    Verilog 里有一批**没有分号**的记号：属性 (* ... *)、块结束词
+    end / endfunction / join ...、begin / else / generate / case、
+    if (...) / for (...) 头、以及 label:。按 ; 切分语句时它们会被并进下一条
+    语句，使该语句无法被识别（实测因此在 picorv32 上漏掉过寄存器声明）。
+
+    这里**只跳这些结构关键字**，不跳普通标识符 —— 因此不会把 generate 里的实例
+    误当成模块级实例（那类语句仍以普通标识符开头，行为与改动前一致）。
+    """
+    while k < limit:
+        while k < limit and text[k].isspace():
+            k += 1
+        m = ATTR_RE.match(text, k)
+        if m and m.end() > k:
+            k = m.end()
+            continue
+        m = BLOCK_END_RE.match(text, k) or STRUCT_RE.match(text, k)
+        if m and m.end() > k:
+            k = m.end()
+            continue
+        m = COND_RE.match(text, k)
+        if m:
+            depth, j = 1, m.end()
+            while j < limit and depth:
+                if text[j] == "(":
+                    depth += 1
+                elif text[j] == ")":
+                    depth -= 1
+                j += 1
+            k = j
+            continue
+        m = LABEL_RE.match(text, k)
+        if m and m.end() > k:
+            k = m.end()
+            continue
+        break
+    return k
+
+
+
 def _parse_body(
     body: str,
     offset: int,
@@ -788,6 +853,58 @@ def _parse_body(
                 masked[k] = " "
     scan = "".join(masked)
 
+    # 1b) 再把"预处理指令行"整行抹白（`ifdef / `define / `timescale ...）：
+    #     它们**没有分号**，否则会被并入下一条语句，使该语句以反引号开头、
+    #     分类失败 —— 实测因此漏掉 picorv32 里 `ifndef PICORV32_REGS 包住的
+    #     17 个寄存器声明。抹白保留换行与字符偏移，行号不受影响。
+    #     只抹掉**指令记号本身**（`ifndef / `FORMAL_KEEP ...），保留同一行里
+    #     跟在后面的真实代码（如 `FORMAL_KEEP reg [63:0] dbg_ascii_instr;）。
+    masked2 = list(scan)
+    for m in re.finditer(r"(?<![\w`])`\w+", scan):
+        end = m.end()
+        if DIRECTIVE_RE.match(scan, m.start()):
+            # 只把紧随其后的**宏名参数**一并抹掉；**不能抹到行尾** ——
+            # 同一行后面可能还有真实代码（如 "`endif  end  reg x;"）。
+            mm2 = re.compile(r"\s+([A-Za-z_]\w*)").match(scan, end)
+            if mm2 and mm2.group(1) not in KEYWORDS:
+                end = mm2.end()
+        for k in range(m.start(), end):
+            if masked2[k] != "\n":
+                masked2[k] = " "
+    scan = "".join(masked2)
+
+    # 1c) 抹白 `for (...)` 头：头里的 `;`（`for (i = 0; i < 4; i = i + 1)`）不是
+    #     语句结束符。always 体内已有 _for_head_spans 处理，但函数体 / generate-for
+    #     的 for 头同样会切坏语句 —— 实测因此漏掉 picorv32 与 axis_ram_switch 的声明。
+    masked3 = list(scan)
+    # 注意：区间必须在**未抹白的原文 body** 上计算 —— 抹白会把括号也变成空格，
+    # 使括号失配、for 头区间被算成一大段、连带把中间的声明与分号一起抹掉
+    # （实测在 picorv32 上造成过这种自伤）。掩码都保持长度不变，偏移可直接用。
+    # 另加长度保护：真正的 for 头很短，超长区间一律视为失配、不抹。
+    for s, e in _for_head_spans(body):
+        if e - s > 500:
+            continue
+        for k in range(s, min(e, len(masked3))):
+            if masked3[k] != "\n":
+                masked3[k] = " "
+    scan = "".join(masked3)
+
+    # 1d) 抹白字符串字面量内容：串里的 `;`（$display("...; ...")）会被误当作语句结束。
+    masked4 = list(scan)
+    k, total = 0, len(scan)
+    while k < total:
+        if scan[k] == '"':
+            j = k + 1
+            while j < total and scan[j] != '"' and scan[j] != "\n":
+                j += 2 if scan[j] == "\\" else 1
+            for q in range(k + 1, min(j, total)):
+                if masked4[q] != "\n":
+                    masked4[q] = " "
+            k = j + 1
+        else:
+            k += 1
+    scan = "".join(masked4)
+
     # 2) 语句级扫描
     stmt_start = 0
     i = 0
@@ -800,9 +917,13 @@ def _parse_body(
             k = stmt_start
             while k < i and scan[k].isspace():
                 k += 1
+            # 跳过语句开头的结构噪声（属性 / end* / begin / if(...) / 标签…），
+            # 把行号推进到真正的语句起始处 —— 这些记号都没有分号，必然被并进来。
+            k = _skip_preamble(scan, k, i)
             line = bisect.bisect_right(line_starts, offset + k)
-            if stmt.strip() and not stmt.lstrip().startswith(("module", "endmodule")):
-                _classify_statement(stmt.strip(), line, mod)
+            text = scan[k:i]
+            if text.strip() and not text.lstrip().startswith(("module", "endmodule")):
+                _classify_statement(text.strip(), line, mod)
             stmt_start = i + 1
         i += 1
 

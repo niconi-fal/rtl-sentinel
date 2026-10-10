@@ -2,14 +2,15 @@
 
 背景（这是一个真实发生过的问题）
 --------------------------------
-解析器会把 generate / `ifdef 区间从"模块级语句扫描"中屏蔽掉（用于避免互斥分支
-互相干扰）。副作用是：**落在这些区间里的声明进不了符号表**。而若干规则
-（R002 / R003 / R008 …）会查 `mod.signal(...)`，查不到就 `continue` —— 于是变成
-**静默漏报**。真实案例见 `bench/backtest/axis_pipeline_fifo_assignment_type`：
-`axis_tvalid_reg` 的声明落在 `if (LENGTH > 0)` 生成块区内，R003 因此漏掉，
-而那个模式**曾被上游作者真实修复**（阻塞赋值 → 非阻塞赋值）。
+语句是按 ``;`` 切分的，而 Verilog 里有**大量没有分号的记号**：属性 ``(* ... *)``、
+编译器指令（`` `ifndef `` 等）、块结束词（``end / endfunction``）、``begin / generate``、
+``if (...)`` / ``for (...)`` 头、以及 label。它们会被并进下一条语句，使该语句**无法被
+识别为声明**，于是信号进不了符号表；而 R002 / R003 / R008 等会查符号表、查不到就跳过
+—— 造成**静默漏报**（真实案例见 ``bench/backtest/axis_pipeline_fifo_assignment_type``：
+``axis_tvalid_reg`` 的声明以 ``(* shreg_extract = "no" *)`` 开头，R003 因此漏掉，
+而那个模式**曾被上游作者真实修复**）。
 
-本脚本不改解析器，而是先把影响面**钉住**，并作为**回归棘轮**：只允许变好，不允许变差。
+本脚本度量影响面，并作为**回归棘轮**：只允许变好，不允许变差。
 
 两个度量
 --------
@@ -35,10 +36,11 @@ from rtl_sentinel.parser import KEYWORDS            # noqa: E402
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS = os.path.join(BASE, "bench", "corpus")
 
-# 回归棘轮：**当前实测值**（2026-10-10）。
-# 这是**已知缺口**，不是"合格线"——棘轮只防止它变差；变好时应下调这两个数。
-# 要真正改善，需要让"声明提取"走**未屏蔽**的文本（见文件头"背景"）。
-BASELINE_MODULES_WITH_UNKNOWN_TARGETS = 11
+# 回归棘轮：当前实测值（2026-10-10，解析器修完属性/指令/块结束词/for 头/结构前导之后）。
+# 从最初的 11 模块 / 59 目标降到 5 模块 / 9 目标（0.58%）。剩余的属零散情形，
+# 未逐一定位根因，由本棘轮盯住；指标变好时应继续下调这两个数。
+BASELINE_MODULES_WITH_UNKNOWN_TARGETS = 5
+BASELINE_UNKNOWN_TARGETS = 9
 BASELINE_UNKNOWN_TARGETS = 59
 
 DECL_RE = re.compile(
